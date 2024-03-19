@@ -1,0 +1,166 @@
+{
+    "name": "termchat",
+    "version": "0.1",
+    "title": "Interoperable messaging built on OpenOdin",
+    "description": "",
+    "homepage": "https://openodin.com/chat",
+    "author": "OpenOdin",
+    "repository": "git+https://github.com/openodin/termchat",
+    "threads": {
+        "presence": {
+            "query": {
+                "parentId": "0000000000000000000000000000000000000000000000000000000000000001",
+                "match": [
+                    {
+                        "nodeType": "00040001",
+                        "filters": [
+                            {
+                                "field": "contentType",
+                                "value": "app/chat/presence",
+                                "cmp": "eq"
+                            }
+                        ]
+                    }
+                ],
+                "depth": 1,
+                "orderByStorageTime": true,
+                "descending": true
+            },
+            "crdt": {
+                "algo": 1,
+                "tail": -1
+            },
+            "post": {
+                "presence": {
+                    "contentType": "app/chat/presence",
+                    "isPublic": true,
+                    "#": "Set Active state if last presence was within 60 minutes",
+                    "#validSeconds": 3600,
+                    "parentId": "0000000000000000000000000000000000000000000000000000000000000001"
+                }
+            }
+        },
+        "channels": {
+            "query": {
+                "parentId": "0000000000000000000000000000000000000000000000000000000000000002",
+                "match": [
+                    {
+                        "nodeType": "00040001",
+                        "filters": [
+                            {
+                                "field": "contentType",
+                                "value": "app/chat/channel",
+                                "cmp": "eq"
+                            }
+                        ]
+                    }
+                ],
+                "depth": 1
+            },
+            "crdt": {
+                "algo": 1,
+                "tail": 20
+            },
+            "post": {
+                "channel": {
+                    "contentType": "app/chat/channel",
+                    "parentId": "0000000000000000000000000000000000000000000000000000000000000002",
+                    "isLicensed": true,
+                    "#": "Set channel validity to 416 days",
+                    "#validSeconds": 36000000,
+                    "#isWriteRestricted": true,
+                    "#refId": "refId must be set for private channels. It is the public key of the friend"
+                }
+            },
+            "postLicense": {
+                "channel": {
+                    "jumpPeerPublicKey": "<insert public key>",
+                    "#targets": "List of public keys of those we post licenses for"
+                }
+            }
+        },
+        "channel": {
+            "query": {
+                "match": [
+                    {
+                        "nodeType": "00040001",
+                        "filters": [
+                            {
+                                "field": "contentType",
+                                "value": "app/chat/message",
+                                "cmp": "eq"
+                            }
+                        ]
+                    }
+                ],
+                "depth": 2,
+                "preserveTransient": true
+            },
+            "crdt": {
+                "algo": 2,
+                "tail": 30,
+                "conf": {
+                    "annotations": {
+                        "format": "messages"
+                    }
+                }
+            },
+            "post": {
+                "message": {
+                    "#": "Post a chat message in the thread.",
+
+                    "bubbleTrigger": true,
+                    "contentType": "app/chat/message",
+                    "isLicensed": true,
+                    "#": "Set message validity to 41 days",
+                    "#validSeconds": 3600000,
+
+                    "#refId": "refId should be set to the id1 of the previous message",
+                    "#data": "data is the text of the message sent"
+                },
+                "attachment": {
+                    "#": "Post a attachment (file or image) in the thread.",
+
+                    "bubbleTrigger": true,
+                    "contentType": "app/chat/message",
+                    "isLicensed": true,
+                    "#": "Set attachment validity to 41 days",
+                    "#validSeconds": 3600000,
+
+                    "#refId": "refId should be set to the id1 of the previous message",
+                    "#blobLength": "blobLength is the size in bytes of the attachment",
+                    "#blobHash": "blobHash is the blake2b hash of the attachment content",
+                    "#data": "data should be set to the filename of the attachment"
+                }
+            },
+            "postLicense": {
+                "default": {
+                    "#": "Post license, same for messages and attachments",
+                    "jumpPeerPublicKey": "<insert public key>",
+                    "#targets": "List of public keys of those we post licenses for. This is typically automatically managed by the application.",
+                    "#validSeconds": "Default license validity time is 90 days for messages created.",
+                    "#validSeconds": 7776000
+                }
+            }
+        }
+    },
+    "peers": [
+        {
+            "connection": {
+                "maxConnectionsPerIp": 1,
+                "maxConnections": 1,
+                "xfactory": "api",
+                "client": {
+                    "auth": {
+                        "method": "handshake"
+                    },
+                    "socketType": "WebSocket",
+                    "host": "172.17.0.13",
+                    "port": 1117,
+                    "serverPublicKey": "<insert public key>",
+                    "reconnectDelay": 3
+                }
+            }
+        }
+    ]
+}
