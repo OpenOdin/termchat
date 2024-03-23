@@ -194,7 +194,7 @@ export class TermChat {
 
             this.channelListController.setChannelActive(channelId1);
 
-            controller.onChange( () => this.redraw(controller) );
+            controller.onUpdate( () => this.redraw(controller) );
         }
         else {
             console.error(`Unknown command: ${command}`);
@@ -202,8 +202,6 @@ export class TermChat {
     }
 
     protected redraw(controller: MessageController) {
-        console.info("Redraw");
-
         controller.getItems().forEach( (item: CRDTViewItem) => {
             const message = item.data as Message;
 

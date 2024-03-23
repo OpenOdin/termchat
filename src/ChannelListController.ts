@@ -107,13 +107,13 @@ export class ChannelListController extends ThreadController {
      *
      * This is to signal to the outside which channel to display.
      *
-     * @param nodeId1 id1 of the channel to set as active.
+     * @param channelNodeId1 id1 of the channel to set as active.
      */
-    public setChannelActive(nodeId1: Buffer) {
+    public setChannelActive(channelNodeId1: Buffer) {
         this.getItems().forEach( item => {
             const channel = item.data as Channel;
 
-            if (item.id1.equals(nodeId1)) {
+            if (item.id1.equals(channelNodeId1)) {
                 channel.isActive = true;
                 channel.hasNotification = false;
             }
@@ -144,10 +144,10 @@ export class ChannelListController extends ThreadController {
 
     /**
      * Check if channel has pending notifications.
-     * @param nodeId1 the id1 of the channel.
+     * @param channelNodeId1 the id1 of the channel.
      */
-    public hasNotification(nodeId1: Buffer): boolean {
-        const item = this.findItem(nodeId1);
+    public hasNotification(channelNodeId1: Buffer): boolean {
+        const item = this.findItem(channelNodeId1);
 
         if (item) {
             const channel = item.data as Channel;
@@ -161,7 +161,7 @@ export class ChannelListController extends ThreadController {
     /**
      * Make a private channel node between two peers, unless one already exists then return it.
      *
-     * @returns nodeId1 of the channel
+     * @returns node of the private channel
      * @throws if channel node cannot be created.
      */
     public async makePrivateChannel(friendPublicKey: Buffer): Promise<DataInterface> {
@@ -210,4 +210,3 @@ export class ChannelListController extends ThreadController {
         return node;
     }
 }
-

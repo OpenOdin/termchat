@@ -57,9 +57,8 @@ export class PresenceController extends ThreadController {
         // on more than one app at the same time, which is important to be able
         // to detect time intervals properly for active status.
         //
-        this.instanceRandomId = crypto.randomBytes(4);
+        this.instanceRandomId = Buffer.from(crypto.randomBytes(4));
 
-        //self.crypto.getRandomValues(this.instanceRandomId);
 
         this.state = {
             lastActivityDetected: 0,

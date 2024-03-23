@@ -4,6 +4,7 @@ import {
     DataInterface,
     ThreadControllerParams,
     ThreadDataParams,
+    CRDTMessagesAnnotations,
 } from "openodin";
 
 /**
@@ -14,6 +15,10 @@ export type Message = {
     publicKey: string,
     id1: string,
     creationTimestamp: string,
+    editedText?: string,
+    reactions?: {[key: string]: any};
+    hasBlob: boolean,
+    blobLength: bigint | undefined,
 };
 
 export class MessageController extends ThreadController {
@@ -48,6 +53,8 @@ export class MessageController extends ThreadController {
         else {
             // TODO: what kind of permmissions do we want?
         }
+
+        this.onChange( () => this.update() );
     }
 
     /**
@@ -83,6 +90,14 @@ export class MessageController extends ThreadController {
         return channelNode.getData()?.toString() ?? "<no name>";
     }
 
+    public getName(): string {
+        return  MessageController.GetName(this.channelNode, this.getPublicKey());
+    }
+
+    public loadHistory() {
+        this.updateStream({tail: this.getTail() + 10});
+    }
+
     /**
      * Whenever a new node is added to the view or an existing node is updated
      * this function is called to format the node associated data for our purposes.
@@ -95,6 +110,33 @@ export class MessageController extends ThreadController {
         message.publicKey           = node.getOwner()!.toString("hex");
         message.id1                 = node.getId1()!.toString("hex");
         message.creationTimestamp   = new Date(node.getCreationTime()!);
+        message.hasBlob             = node.hasBlob();
+        message.blobLength          = node.getBlobLength();
+
+        const annotations = node.getAnnotations();
+
+        if (annotations) {
+            try {
+                const crdtMessageAnnotaions = new CRDTMessagesAnnotations();
+
+                crdtMessageAnnotaions.load(annotations);
+
+                const editNode = crdtMessageAnnotaions.getEditNode();
+
+                if (editNode) {
+                    const editedText = editNode.getData()?.toString();
+
+                    message.editedText = editedText;
+                }
+
+                const reactions = crdtMessageAnnotaions.getReactions();
+
+                message.reactions = reactions;
+            }
+            catch(e) {
+                // Fall through.
+            }
+        }
     }
 
     /**
@@ -121,11 +163,68 @@ export class MessageController extends ThreadController {
 
         const node = await this.thread.post("message", params);
 
-        console.info("sent message", node.getParentId());
-
         if (node.isLicensed()) {
             await this.thread.postLicense("default", node, { targets: this.targets });
         }
+    }
+
+    public async editMessage(nodeToEdit: DataInterface, messageText: string) {
+        const params = {
+            data: Buffer.from(messageText),
+        };
+
+        const node = await this.thread.postEdit("message", nodeToEdit, params);
+
+        if (node.isLicensed()) {
+            await this.thread.postLicense("default", node, {
+                targets: this.targets,
+            });
+        }
+    }
+
+    public async toggleReaction(message: Message, nodeToReactTo: DataInterface, reaction: string) {
+
+        const publicKey = this.service.getPublicKey().toString("hex");
+
+        let onoff = "react";
+
+        if (message.reactions?.reactions[reaction]?.publicKeys.includes(publicKey)) {
+            onoff = "unreact";
+        }
+
+        const params = {
+            data: Buffer.from(`${onoff}/${reaction}`),
+        };
+
+        const node = await this.thread.postReaction("message", nodeToReactTo, params);
+
+        if (node.isLicensed()) {
+            await this.thread.postLicense("default", node, {
+                targets: this.targets,
+            });
+        }
+    }
+
+    public async deleteMessage(messageNode: DataInterface) {
+        // First edit the node with an empty string which will effectively hide the node.
+        // This is because actual deletion of nodes is not instant, but editing nodes is instant.
+        //
+        await this.editMessage(messageNode, "");
+
+        // We delay the actual deletion some, just to give the above edit message annotation
+        // a chance to spread before the node is removed. If the node is destroyed directly then
+        // the above notification cannot get distributed.
+        setTimeout( async () => {
+            const destroyNodes = await this.thread.delete(messageNode);
+
+            destroyNodes.forEach( async (node) => {
+                if (node.isLicensed() && node.getLicenseMinDistance() === 0) {
+                    /*const licenses = */await this.thread.postLicense("default", node, {
+                        targets: this.targets,
+                    });
+                }
+            });
+        }, 1000);
     }
 }
 
