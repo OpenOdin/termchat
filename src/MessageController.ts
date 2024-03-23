@@ -7,18 +7,30 @@ import {
     CRDTMessagesAnnotations,
 } from "openodin";
 
+type Reaction = {
+    name: string,
+    hasReacted: boolean,
+    publicKeys: string[],
+    count: number,
+};
+
+type Reactions = {
+    hasMore: boolean,
+    list: Reaction[],
+};
+
 /**
  * The collected data we have to display a message.
  */
 export type Message = {
+    isAuthor: boolean,
     text: string,
     publicKey: string,
     id1: string,
     creationTimestamp: string,
     editedText?: string,
-    reactions?: {[key: string]: any};
-    hasBlob: boolean,
-    blobLength: bigint | undefined,
+    reactions: Reactions,
+    blobLength?: bigint,
 };
 
 export class MessageController extends ThreadController {
@@ -106,13 +118,16 @@ export class MessageController extends ThreadController {
      * @param message the data object to set (in place) associated with node
      */
     protected makeData(node: DataInterface, message: any) {
+        message.isAuthor            = node.getOwner()!.equals(this.service.getPublicKey());
         message.text                = node.getData()?.toString();
         message.publicKey           = node.getOwner()!.toString("hex");
         message.id1                 = node.getId1()!.toString("hex");
         message.creationTimestamp   = new Date(node.getCreationTime()!);
-        message.hasBlob             = node.hasBlob();
-        message.blobLength          = node.getBlobLength();
+        message.reactions           = message.reactions ?? {hasMore: false, list: []};
 
+        // Handle reactions (likes) and edits of the text.
+        // These are technically "annotations" to the node.
+        //
         const annotations = node.getAnnotations();
 
         if (annotations) {
@@ -131,7 +146,22 @@ export class MessageController extends ThreadController {
 
                 const reactions = crdtMessageAnnotaions.getReactions();
 
-                message.reactions = reactions;
+                message.reactions.hasMore = reactions.hasMore;
+
+                const names = Object.keys(reactions.reactions);
+                names.sort();
+
+                message.reactions.list = names.map( name => {
+                    const publicKey = this.service.getPublicKey().toString("hex");
+                    const publicKeys = reactions.reactions[name].publicKeys;
+
+                    return {
+                        name,
+                        hasReacted: publicKeys.includes(publicKey),
+                        publicKeys: reactions.reactions[name].publicKeys,
+                        count: reactions.reactions[name].count,
+                    };
+                });
             }
             catch(e) {
                 // Fall through.
@@ -182,18 +212,19 @@ export class MessageController extends ThreadController {
         }
     }
 
-    public async toggleReaction(message: Message, nodeToReactTo: DataInterface, reaction: string) {
-
+    public async toggleReaction(message: Message, nodeToReactTo: DataInterface, name: string) {
         const publicKey = this.service.getPublicKey().toString("hex");
 
         let onoff = "react";
 
-        if (message.reactions?.reactions[reaction]?.publicKeys.includes(publicKey)) {
+        const reaction = message.reactions.list.find( r => r.name === name );
+
+        if (reaction?.publicKeys.includes(publicKey)) {
             onoff = "unreact";
         }
 
         const params = {
-            data: Buffer.from(`${onoff}/${reaction}`),
+            data: Buffer.from(`${onoff}/${name}`),
         };
 
         const node = await this.thread.postReaction("message", nodeToReactTo, params);
@@ -227,4 +258,3 @@ export class MessageController extends ThreadController {
         }, 1000);
     }
 }
-

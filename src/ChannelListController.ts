@@ -44,6 +44,8 @@ export class ChannelListController extends ThreadController {
         params.threadName = params.threadName ?? "channels";
 
         super(params, service);
+
+        this.onChange( () => this.update() );
     }
 
     /**

@@ -90,7 +90,7 @@ export class PresenceController extends ThreadController {
             this.thread.post("presence", {data: this.instanceRandomId});
         }
 
-        this.pulseTimer = setTimeout(() => this.postPresence(), INACTIVE_THRESHOLD);
+        this.pulseTimer = setTimeout( () => this.postPresence(), INACTIVE_THRESHOLD);
     }
 
     /**
