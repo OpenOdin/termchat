@@ -1,6 +1,6 @@
 import { strict as assert } from "assert";
 
-import Readline from "readline";
+import termkit from "terminal-kit";
 
 import {
     Service,
@@ -34,13 +34,15 @@ import {
 let console = PocketConsole({module: "TermChat", format: "%c[%L%l]%C "});
 
 export class TermChat {
+    public chat: any;
     protected presenceController?: PresenceController;
 
     protected channelListController?: ChannelListController;
 
+
     constructor(protected service: Service) {
         service.onStorageConnect( () => {
-            console.info("Connected to storage");
+            this.chat.appendLog(`^!Connected to storage`);
 
             this.presenceController = new PresenceController({}, service);
 
@@ -51,10 +53,10 @@ export class TermChat {
 
         service.onPeerConnect( (p2pClient) => {
             const pubKey = p2pClient.getRemotePublicKey();
-            console.info(`Peer connected: ${pubKey.toString("hex")}`);
+            this.chat.appendLog(`^!Peer connected: ${pubKey.toString("hex")}`);
 
             p2pClient.onMessagingError( (message) => {
-                console.error("Error in peer", message);
+                this.chat.appendLog(`^!Error in peer: ${message}`);
             });
 
             p2pClient.onMessagingPong( (roundTripTime) => {
@@ -64,40 +66,240 @@ export class TermChat {
 
         service.onPeerFactoryCreate( (handshakeFactory) => {
             handshakeFactory.onSocketFactoryError( (name, error) => {
-                console.error("Socket error", name, error.message);
+                this.chat.appendLog(`^!Socket error: ${name}. Message: ${error.message}`);
             });
 
             handshakeFactory.onHandshakeError( (error) => {
-                console.error("Handshake error", error.message);
+                this.chat.appendLog(`^!Handshake error: ${error.message}`);
             });
         });
 
         service.onPeerClose( (p2pClient) => {
             const pubKey = p2pClient.getRemotePublicKey();
-            console.info(`Peer disconnected: ${pubKey.toString("hex")}`);
+            this.chat.appendLog(`^!Peer disconnected: ${pubKey.toString("hex")}`);
         });
 
         this.setupUI();
     }
 
     protected setupUI() {
-        const readline = Readline.createInterface({input: process.stdin, output: process.stderr});
+        const term = termkit.terminal;
 
-        readline.on("line", (input: string) => {
-            Readline.moveCursor(process.stderr, 0, -1);  // Delete our input
+        // xterm-compatible window title
+        term.windowTitle("termchat");
 
-            if (input[0] === '/') {
-                this.handleCommand(input);
+        // NOTE: remove mouse events to prevent unhandled clipboard bugs (socket pipe error)
+        /*
+        term.grabInput({
+            mouse: false,
+            focus: true
+        });*/
+        term.mouseDrag(false);
+        term.mouseMotion(false);
+
+        //@ts-ignore: @types/terminal-kit 2.5.0 is not in sync with latest terminal-kit version 3
+        var document = term.createDocument( {
+            backgroundAttr: {
+                // NOTE: consider using magenta when debugging
+                //bgColor: "magenta",
+                //dim: true
+            },
+        } ) ;
+
+        let thisReference = this;
+        let history: string[] = [];
+        let layout: any;
+        let chatInputBackground: any;
+        const draw = function() {
+            // Hide existing layout
+            if(layout) {
+                layout.hide();
             }
-            else {
-                this.sendChat(input);
+
+            //@ts-ignore: @types/terminal-kit 2.5.0 is not in sync with latest terminal-kit version 3
+            layout = new termkit.Layout( {
+                parent: document ,
+                boxChars: "double",
+                zIndex: 10,
+                movable: false,
+                layout: {
+                    id: "main",
+                    y: 0 ,
+                    widthPercent: 100,
+                    height: (term.height - 3),
+                    rows: [
+                        {
+                            id: "1st row",
+                            heightPercent: 100,
+                            columns: [
+                                {
+                                    id: "chat"
+                                },
+                            ]
+                        }
+                    ]
+                }
+            } ) ;
+
+            //@ts-ignore: @types/terminal-kit 2.5.0 is not in sync with latest terminal-kit version 3
+            thisReference.chat = new termkit.TextBox({
+                parent: document,
+                zIndex: 1,
+                content: thisReference.chat ? thisReference.chat.getContent() : "Welcome to termchat! Type /help for list of commands.",
+                attr: {
+                    bgColor: "default"
+                },
+                hidden: false,
+                x: 1,
+                y: 1,
+                width: (term.width - 2),
+                height: (term.height - 5),
+                scrollable: true,
+                vScrollBar: true,
+                lineWrap: false,
+                wordWrap: true,
+                movable: false,
+                contentHasMarkup: true,
+
+                // Remove all preset keybindings (includes scroll and copyToDocument/ToSystemClipboard
+                keyBindings: {
+                }
+            });
+
+            //@ts-ignore: @types/terminal-kit 2.5.0 is not in sync with latest terminal-kit version 3
+            let say = new termkit.TextBox({
+                parent: document,
+                zIndex: 1,
+                content: " Say: ",
+                // NOTE: consider using magenta when debugging
+                //attr: { bgColor: "magenta" },
+                hidden: false,
+                x: 1,
+                y: (term.height - 4),
+                width: 6,
+                height: 1,
+                scrollable: false,
+                vScrollBar: false,
+                lineWrap: false,
+                wordWrap: true,
+                movable: false,
+                contentHasMarkup: true
+            } ) ;
+
+
+            //@ts-ignore: @types/terminal-kit 2.5.0 is not in sync with latest terminal-kit version 3
+            chatInputBackground = new termkit.TextBox({
+                parent: document,
+                zIndex: 1,
+                content: "> ",
+                attr: {
+                    bgColor: "default"
+                },
+                hidden: false,
+                x: 0,
+                y: (term.height - 3),
+                width: term.width,
+                height: term.height,
+                scrollable: false,
+                vScrollBar: false,
+                lineWrap: false,
+                wordWrap: true,
+                movable: false,
+                contentHasMarkup: true
+            });
+
+
+            thisReference.chat.onClick = function() {
+            };
+
+        };
+
+        draw();
+
+        let inputFieldEventEmitter: any;
+        const createInputField = function() {
+            inputFieldEventEmitter = term.inputField( {
+                default: "",
+                //@ts-ignore: @types/terminal-kit 2.5.0 is not in sync with latest terminal-kit version 3
+                x: 3,
+                y: (term.height - 2),
+                cancelable: false,
+                history: history,
+                autoCompleteHint: true,
+                maxLength: (term.width * 3 - 3)
+            }, function(error: any, msg: string) {
+                if(msg) {
+                    if (msg[0] === '/') {
+                        thisReference.handleCommand(msg);
+                    } else {
+                        // Send
+                        thisReference.sendChat(msg);
+                    }
+
+                    // Update UI
+                    history.push(msg);
+                    term.saveCursor();
+                    createInputField();
+                    term.moveTo(1, term.height);
+
+                    // Toggle elements to emulate a redraw since redraw doesn't appear to work
+                    // Only do that when the message spans multiple lines
+                    if(msg.length > term.width) {
+                        document.redraw(true);
+                        layout.redraw(true);
+                        thisReference.chat.draw();
+                        thisReference.chat.redraw(true);
+
+                        thisReference.chat.hide();
+                        thisReference.chat.show();
+                        document.hide();
+                        document.show();
+
+                        chatInputBackground.hide();
+                        chatInputBackground.show();
+
+                        layout.hide();
+                        layout.show();
+                    }
+                }
+            });
+        }
+        createInputField();
+
+        term.on("resize", function(width: number, height: number) {
+            chatInputBackground.hide();
+            chatInputBackground.show();
+            draw();
+            chatInputBackground.hide();
+            chatInputBackground.show();
+            thisReference.chat.scrollToBottom();
+            inputFieldEventEmitter.rebase(3, height - 2);
+        });
+
+        term.on("key" , function(name: string, matches: any, data: any) {
+            if(name === "CTRL_C") {
+                thisReference.service.stop();
+
+                term.grabInput( false ) ;
+                term.hideCursor( false ) ;
+                term.styleReset() ;
+                term.clear() ;
+
+                process.exit() ;
+            } else if(name == "PAGE_UP" || name == "SHIFT_PAGE_UP") {
+                thisReference.chat.scroll(0, 1);
+            } else if(name == "PAGE_DOWN" || name == "SHIFT_PAGE_DOWN") {
+                thisReference.chat.scroll(0, -1);
             }
         });
 
-        // This hook will quit the chat on ctrl-c and ctrl-d.
-        readline.on("close", () => this.service.stop() );
+        term.on("mouse", function(name: string, data: any) {
+            term.move(0, 0);
+        });
 
-        console.info("Type /help for list of commands");
+        term.on("error" , function(err: any) {
+            console.error(err);
+        });
     }
 
     protected async sendChat(message: string) {
@@ -106,7 +308,7 @@ export class TermChat {
         const controller = this.channelListController.getActiveController();
 
         if (!controller) {
-            console.error("No channel opened");
+            this.chat.appendLog(`^!No channel opened`);
 
             return;
         }
@@ -115,7 +317,7 @@ export class TermChat {
     }
 
     protected showHelp() {
-        console.log(`The following commands are available:
+        this.chat.appendLog(`^!The following commands are available:
 /help (shows this help)
 /presence (list all active and inactive public keys)
 /channels (list all channels available)
@@ -139,22 +341,22 @@ export class TermChat {
                 const you = publicKey.equals(this.service.getPublicKey()) ? " (this is you)" : "";
 
                 if (active) {
-                    console.log(`${index} (active) ${publicKey.toString("hex")}${you}`);
+                    this.chat.appendLog(`^!${index} (active) ${publicKey.toString("hex")}${you}`);
                 }
                 else {
-                    console.log(`${index} (inactive) ${publicKey.toString("hex")}${you}`);
+                    this.chat.appendLog(`^!${index} (inactive) ${publicKey.toString("hex")}${you}`);
                 }
             });
         }
         else if (command === "/channels") {
-            console.log("Channels:");
+            this.chat.appendLog("^!Channels:");
 
             const channels = this.channelListController?.getItems() ?? [];
 
             channels.forEach( (item: CRDTViewItem, index: number) => {
                 const channel = item.data as Channel;
 
-                console.log(`${index} ${channel.name}, isOpen: ${channel.controller !== undefined}, isPrivate: ${channel.isPrivate}`);
+                this.chat.appendLog(`^!${index} ${channel.name}, isOpen: ${channel.controller !== undefined}, isPrivate: ${channel.isPrivate}`);
             });
         }
         else if (command.startsWith("/q ")) {
@@ -167,13 +369,13 @@ export class TermChat {
 
             const publicKey = all[index];
 
-            console.info(`Creating private channel with ${publicKey.toString("hex")}`);
+            this.chat.appendLog(`^!Creating private channel with ${publicKey.toString("hex")}`);
 
             assert(this.channelListController);
 
             const channelNode = await this.channelListController.makePrivateChannel(publicKey);
 
-            console.info("Channel created", channelNode.toString());
+            this.chat.appendLog(`^!Channel created ${channelNode.toString()}`);
         }
         else if (command.startsWith("/open ")) {
             const index = parseInt(command.slice(6));
@@ -186,7 +388,7 @@ export class TermChat {
 
             const channelId1 = channels[index];
 
-            console.info(`Open channel with ${channelId1.toString("hex")}`);
+            this.chat.appendLog(`^!Open channel with ${channelId1.toString("hex")}`);
 
             assert(this.channelListController);
 
@@ -197,7 +399,7 @@ export class TermChat {
             controller.onUpdate( () => this.redraw(controller) );
         }
         else {
-            console.error(`Unknown command: ${command}`);
+            this.chat.appendLog(`^!Unknown command: ${command}`);
         }
     }
 
@@ -205,7 +407,7 @@ export class TermChat {
         controller.getItems().forEach( (item: CRDTViewItem) => {
             const message = item.data as Message;
 
-            console.log(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
+            this.chat.appendLog(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
         });
     }
 }
