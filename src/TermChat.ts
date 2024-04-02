@@ -145,7 +145,8 @@ export class TermChat {
             thisReference.chat = new termkit.TextBox({
                 parent: document,
                 zIndex: 1,
-                content: thisReference.chat ? thisReference.chat.getContent() : "Welcome to termchat! Type /help for list of commands.",
+                content: thisReference.chat ? thisReference.chat.getContent() : `^!Welcome to termchat!
+Type /help for list of commands.`,
                 attr: {
                     bgColor: "default"
                 },
@@ -248,7 +249,6 @@ export class TermChat {
                         document.redraw(true);
                         layout.redraw(true);
                         thisReference.chat.draw();
-                        thisReference.chat.redraw(true);
 
                         thisReference.chat.hide();
                         thisReference.chat.show();
@@ -375,7 +375,7 @@ export class TermChat {
 
             const channelNode = await this.channelListController.makePrivateChannel(publicKey);
 
-            this.chat.appendLog(`^!Channel created ${channelNode.toString()}`);
+            this.chat.appendLog(`^!Channel created with id1 ${JSON.parse(channelNode.toString()).id1}`);
         }
         else if (command.startsWith("/open ")) {
             const index = parseInt(command.slice(6));
@@ -396,7 +396,7 @@ export class TermChat {
 
             this.channelListController.setChannelActive(channelId1);
 
-            controller.onUpdate( () => this.redraw(controller) );
+            controller.onChange( (event) => event.added.length > 0 ? this.drawLastItem(controller) : null );
         }
         else {
             this.chat.appendLog(`^!Unknown command: ${command}`);
@@ -409,6 +409,14 @@ export class TermChat {
 
             this.chat.appendLog(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
         });
+    }
+
+    protected drawLastItem(controller: MessageController) {
+        const item = controller.getLastItem() as CRDTViewItem;
+        if(item) {
+            const message = item.data as Message;
+            this.chat.appendLog(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
+        }
     }
 }
 
