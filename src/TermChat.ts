@@ -112,7 +112,7 @@ export class TermChat {
         let chatInputBackground: any;
         const draw = function() {
             // Hide existing layout
-            if(layout) {
+            if (layout) {
                 layout.hide();
             }
 
@@ -146,7 +146,7 @@ export class TermChat {
                 parent: document,
                 zIndex: 1,
                 content: thisReference.chat ? thisReference.chat.getContent() : `^!Welcome to termchat!
-Type /help for list of commands.`,
+^!Type /help for list of commands.`,
                 attr: {
                     bgColor: "default"
                 },
@@ -229,7 +229,7 @@ Type /help for list of commands.`,
                 autoCompleteHint: true,
                 maxLength: (term.width * 3 - 3)
             }, function(error: any, msg: string) {
-                if(msg) {
+                if (msg) {
                     if (msg[0] === '/') {
                         thisReference.handleCommand(msg);
                     } else {
@@ -245,7 +245,7 @@ Type /help for list of commands.`,
 
                     // Toggle elements to emulate a redraw since redraw doesn't appear to work
                     // Only do that when the message spans multiple lines
-                    if(msg.length > term.width) {
+                    if (msg.length > term.width) {
                         document.redraw(true);
                         layout.redraw(true);
                         thisReference.chat.draw();
@@ -277,7 +277,7 @@ Type /help for list of commands.`,
         });
 
         term.on("key" , function(name: string, matches: any, data: any) {
-            if(name === "CTRL_C") {
+            if (name === "CTRL_C") {
                 thisReference.service.stop();
 
                 term.grabInput( false ) ;
@@ -286,9 +286,9 @@ Type /help for list of commands.`,
                 term.clear() ;
 
                 process.exit() ;
-            } else if(name == "PAGE_UP" || name == "SHIFT_PAGE_UP") {
+            } else if (name == "PAGE_UP" || name == "SHIFT_PAGE_UP") {
                 thisReference.chat.scroll(0, 1);
-            } else if(name == "PAGE_DOWN" || name == "SHIFT_PAGE_DOWN") {
+            } else if (name == "PAGE_DOWN" || name == "SHIFT_PAGE_DOWN") {
                 thisReference.chat.scroll(0, -1);
             }
         });
@@ -318,18 +318,19 @@ Type /help for list of commands.`,
 
     protected showHelp() {
         this.chat.appendLog(`^!The following commands are available:
-/help (shows this help)
-/presence (list all active and inactive public keys)
-/channels (list all channels available)
-/q <publicKey index> (create a new private channel targeted at given public key by its index in /presence list)
-/open <channel index> (open and activate a channel for messaging based on its index in the /channels list)`);
+^!/help (shows this help)
+^!/presence (list all active and inactive public keys)
+^!/channels (list all channels available)
+^!/q <publicKey index> (create a new private channel targeted at given public key by its index in /presence list)
+^!/open <channel index> (open and activate a channel for messaging based on its index in the /channels list)`);
     }
 
     protected async handleCommand(command: string) {
-        if (command === "/help") {
+        if (command.startsWith("/help")) {
             this.showHelp();
         }
-        else if (command === "/presence") {
+        else if (command.startsWith("/presence")) {
+            this.chat.appendLog(`^!Presence list:`);
             const activeList = this.presenceController?.getActiveList() ?? [];
             const inactiveList = this.presenceController?.getInactiveList() ?? [];
 
@@ -348,16 +349,20 @@ Type /help for list of commands.`,
                 }
             });
         }
-        else if (command === "/channels") {
+        else if (command.startsWith("/channels")) {
             this.chat.appendLog("^!Channels:");
 
             const channels = this.channelListController?.getItems() ?? [];
 
-            channels.forEach( (item: CRDTViewItem, index: number) => {
-                const channel = item.data as Channel;
+            if (channels.length <= 0) {
+                this.chat.appendLog(`^!No channels available`);
+            } else {
+                channels.forEach( (item: CRDTViewItem, index: number) => {
+                    const channel = item.data as Channel;
 
-                this.chat.appendLog(`^!${index} ${channel.name}, isOpen: ${channel.controller !== undefined}, isPrivate: ${channel.isPrivate}`);
-            });
+                    this.chat.appendLog(`^!${index} ${channel.name}, isOpen: ${channel.controller !== undefined}, isPrivate: ${channel.isPrivate}`);
+                });
+            }
         }
         else if (command.startsWith("/q ")) {
             const index = parseInt(command.slice(3));
@@ -369,13 +374,21 @@ Type /help for list of commands.`,
 
             const publicKey = all[index];
 
-            this.chat.appendLog(`^!Creating private channel with ${publicKey.toString("hex")}`);
+            if (publicKey) {
+                this.chat.appendLog(`^!Creating private channel with ${publicKey.toString("hex")}`);
 
-            assert(this.channelListController);
+                assert(this.channelListController);
 
-            const channelNode = await this.channelListController.makePrivateChannel(publicKey);
+                const channelNode = await this.channelListController.makePrivateChannel(publicKey);
 
-            this.chat.appendLog(`^!Channel created with id1 ${JSON.parse(channelNode.toString()).id1}`);
+                this.chat.appendLog(`^!Channel created with id1 ${JSON.parse(channelNode.toString()).id1}`);
+            } else {
+                if (isNaN(index)) {
+                    this.chat.appendLog(`^!Unable to create a new channel without the index. Try: /q 123`);
+                } else {
+                    this.chat.appendLog(`^!Public key with index ${index} is not present. Try: /presence`);
+                }
+            }
         }
         else if (command.startsWith("/open ")) {
             const index = parseInt(command.slice(6));
@@ -388,15 +401,23 @@ Type /help for list of commands.`,
 
             const channelId1 = channels[index];
 
-            this.chat.appendLog(`^!Open channel with ${channelId1.toString("hex")}`);
+            if (channelId1) {
+                this.chat.appendLog(`^!Open channel with ${channelId1.toString("hex")}`);
 
-            assert(this.channelListController);
+                assert(this.channelListController);
 
-            const controller = await this.channelListController.openChannel(channelId1);
+                const controller = await this.channelListController.openChannel(channelId1);
 
-            this.channelListController.setChannelActive(channelId1);
+                this.channelListController.setChannelActive(channelId1);
 
-            controller.onChange( (event) => event.added.length > 0 ? this.drawLastItem(controller) : null );
+                controller.onChange( (event) => event.added.length > 0 ? this.drawLastItem(controller) : null );
+            } else {
+                if (isNaN(index)) {
+                    this.chat.appendLog(`^!Unable to open existing channel without the index. Try: /open 123`);
+                } else {
+                    this.chat.appendLog(`^!Channel with index ${index} does not exist. Try: /channels`);
+                }
+            }
         }
         else {
             this.chat.appendLog(`^!Unknown command: ${command}`);
@@ -413,7 +434,7 @@ Type /help for list of commands.`,
 
     protected drawLastItem(controller: MessageController) {
         const item = controller.getLastItem() as CRDTViewItem;
-        if(item) {
+        if (item) {
             const message = item.data as Message;
             this.chat.appendLog(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
         }
