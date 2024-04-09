@@ -3,7 +3,7 @@
     "version": "0.1",
     "title": "Interoperable messaging built on OpenOdin",
     "description": "",
-    "homepage": "https://openodin.com/chat",
+    "homepage": "https://openodin.com",
     "author": "OpenOdin",
     "repository": "git+https://github.com/openodin/termchat",
     "threads": {
@@ -90,15 +90,29 @@
                                 "value": "app/chat/message",
                                 "cmp": "eq"
                             }
-                        ]
+                        ],
+                        "levels": [1],
+                        "limit": 3000
+                    },
+                    {
+                        "nodeType": "00040001",
+                        "filters": [
+                            {
+                                "field": "contentType",
+                                "value": "app/chat/message",
+                                "cmp": "eq"
+                            }
+                        ],
+                        "levels": [2],
+                        "limit": 3000
                     }
                 ],
                 "depth": 2,
                 "preserveTransient": true
             },
             "crdt": {
-                "algo": 2,
-                "tail": 30,
+                "algo": 1,
+                "tail": 1000,
                 "conf": {
                     "annotations": {
                         "format": "messages"
@@ -147,13 +161,7 @@
     "peers": [
         {
             "connection": {
-                "maxConnectionsPerIp": 1,
-                "maxConnections": 1,
-                "xfactory": "api",
                 "client": {
-                    "auth": {
-                        "method": "handshake"
-                    },
                     "socketType": "WebSocket",
                     "host": "172.17.0.13",
                     "port": 1117,

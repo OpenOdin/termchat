@@ -1,8 +1,9 @@
 import {
     Service,
     ThreadController,
+    ThreadTemplate,
+    ThreadFetchParams,
     DataInterface,
-    ThreadControllerParams,
 } from "openodin";
 
 import {
@@ -40,10 +41,15 @@ export type Channel = {
 };
 
 export class ChannelListController extends ThreadController {
-    constructor(params: ThreadControllerParams, service: Service) {
-        params.threadName = params.threadName ?? "channels";
+    protected messageThreadTemplate: ThreadTemplate;
 
-        super(params, service);
+    constructor(service: Service, threadTemplate: ThreadTemplate,
+        messageThreadTemplate: ThreadTemplate,
+        threadFetchParams: ThreadFetchParams = {})
+    {
+        super(service, threadTemplate, threadFetchParams);
+
+        this.messageThreadTemplate = messageThreadTemplate;
 
         this.onChange( () => this.update() );
     }
@@ -82,7 +88,8 @@ export class ChannelListController extends ThreadController {
         let messageController = channel.controller;
 
         if (!messageController) {
-            messageController = new MessageController({}, this.service, channelNode);
+            messageController = new MessageController(channelNode, this.service,
+                this.messageThreadTemplate);
 
             messageController.onNotification( () => {
                 if (channel.isActive === false) {

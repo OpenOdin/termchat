@@ -26,7 +26,7 @@
         "typescript": "^4.4.3"
     },
     "dependencies": {
-        "openodin": "0.8.4",
+        "openodin": "0.8.5",
         "pocket-console": "0.5.0",
         "terminal-kit": "^3.1.1"
     }

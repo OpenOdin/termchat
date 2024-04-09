@@ -1,10 +1,11 @@
 import crypto from "crypto";
 
 import {
-    CRDTVIEW_EVENT,
+    CRDTViewItem,
     Hash,
     ThreadController,
-    ThreadControllerParams,
+    ThreadFetchParams,
+    ThreadTemplate,
     Service,
 } from "openodin";
 
@@ -47,11 +48,10 @@ export class PresenceController extends ThreadController {
 
     protected instanceRandomId: Buffer;
 
-    constructor(params: ThreadControllerParams, service: Service) {
-
-        params.threadName = params.threadName ?? "presence";
-
-        super(params, service);
+    constructor(service: Service, threadTemplate: ThreadTemplate,
+        threadFetchParams: ThreadFetchParams = {})
+    {
+        super(service, threadTemplate, threadFetchParams);
 
         // These random bytes are used to differentiate when a user is present
         // on more than one app at the same time, which is important to be able
@@ -68,7 +68,7 @@ export class PresenceController extends ThreadController {
             presenceNodes: {},
         };
 
-        this.onChange( (event: CRDTVIEW_EVENT) => this.handleOnChange(event) );
+        this.onChange( (added: CRDTViewItem[]) => this.handleOnChange(added) );
 
         this.refreshInterval = setInterval(() => this.refreshPresence(), INACTIVE_THRESHOLD / 4);
     }
@@ -145,16 +145,16 @@ export class PresenceController extends ThreadController {
     public isPresent(publicKeyStr: string): boolean {
         const publicKey = Buffer.from(publicKeyStr, "hex");
 
-        return this.getActiveList().findIndex( publicKey2 => publicKey.equals(publicKey) ) >= 0;
+        return this.getActiveList().findIndex( publicKey2 => publicKey2.equals(publicKey) ) >= 0;
     }
 
     /**
      * In this controller it makes more sense to hook the onChange event rather than implementing the
      * makeData() function since we are using a special struct which is not per node.
      */
-    protected handleOnChange(event: CRDTVIEW_EVENT) {
-        event.added.forEach( id1 => {
-            const node = this.getNode(id1);
+    protected handleOnChange(added: CRDTViewItem[]) {
+        added.forEach( item => {
+            const node = item.node;
 
             const publicKey = node?.getOwner();
 
@@ -185,13 +185,13 @@ export class PresenceController extends ThreadController {
     protected refreshPresence = () => {
         // Check if user is going inactive.
         //
-        //if (this.isActive()) {
-            //if (Date.now() - this.state.lastActivityDetected >= INACTIVE_THRESHOLD) {
-                //this.state.isActive = false;
+        if (this.isActive()) {
+            if (Date.now() - this.state.lastActivityDetected >= INACTIVE_THRESHOLD) {
+                this.state.isActive = false;
 
-                //this.triggerEvent("inactive");
-            //}
-        //}
+                this.triggerEvent("inactive");
+            }
+        }
 
         // Filter users into active or inctive bucktes based on their last ping.
         //
