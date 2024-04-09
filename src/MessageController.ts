@@ -2,8 +2,10 @@ import {
     Service,
     ThreadController,
     DataInterface,
-    ThreadControllerParams,
     ThreadDataParams,
+    ThreadFetchParams,
+    ThreadTemplate,
+    BrowserUtil,
     CRDTMessagesAnnotations,
 } from "openodin";
 
@@ -36,20 +38,24 @@ export type Message = {
 export class MessageController extends ThreadController {
     protected channelNode: DataInterface;
 
+    /** The limit of messages initially synced from the server. */
+    protected limit: number = 100;
+
     /** License targets. */
     private targets: Buffer[] = [];
 
-    /**
-     * @param thread controller params
-     * @param channelNode the data node representing the channel
-     */
-    constructor(params: ThreadControllerParams, service: Service, channelNode: DataInterface) {
-        // "channel" refers to the JSON configuration threads.channel
-        params.threadName       = params.threadName ?? "channel";
-        params.threadDefaults   = params.threadDefaults ?? {};
-        params.threadDefaults.parentId = channelNode.getId();
+    constructor(channelNode: DataInterface, service: Service, threadTemplate: ThreadTemplate,
+        threadFetchParams: ThreadFetchParams = {}, purgeInterval?: number)
+    {
+        threadFetchParams.query = threadFetchParams.query ?? {};
+        threadFetchParams.query.parentId = channelNode.getId();
 
-        super(params, service);
+        // Do not autosync since we need to do this after the super() call to have access
+        // to this.limit (since "this" is not available before call to super()).
+        //
+        const autoSync = false;
+
+        super(service, threadTemplate, threadFetchParams, autoSync, purgeInterval);
 
         this.channelNode = channelNode;
 
@@ -67,6 +73,8 @@ export class MessageController extends ThreadController {
         }
 
         this.onChange( () => this.update() );
+
+        this.addAutoSync();
     }
 
     /**
@@ -106,8 +114,31 @@ export class MessageController extends ThreadController {
         return  MessageController.GetName(this.channelNode, this.getPublicKey());
     }
 
+    protected addAutoSync() {
+        // Here we are taking the Thread query and modifying its limits to be a sync query.
+        //
+        const fetchRequest = this.thread.getFetchRequest(true);
+        fetchRequest.query.match[0].limit = this.limit;
+        fetchRequest.query.match[1].limit = this.limit;
+
+        // Set the reverse fetch to not have any limit so to not miss to sync
+        // things in cases of being offline.
+        // This is data the client is pushing to the server.
+        //
+        const fetchRequestReverse = this.thread.getFetchRequest(true);
+        fetchRequestReverse.query.match[0].limit = -1;
+        fetchRequestReverse.query.match[1].limit = -1;
+
+        super.addAutoSync(fetchRequest, fetchRequestReverse);
+    }
+
     public loadHistory() {
-        this.updateStream({tail: this.getTail() + 10});
+        this.limit += 100;
+
+        // Calling this will first remove any sync then add the sync again
+        // with the new limit in place.
+        //
+        this.addAutoSync();
     }
 
     /**

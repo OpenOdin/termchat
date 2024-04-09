@@ -39,16 +39,25 @@ export class TermChat {
 
     protected channelListController?: ChannelListController;
 
+    protected lastRenderedItemId1?: Buffer;
+
 
     constructor(protected service: Service) {
         service.onStorageConnect( () => {
             this.chat.appendLog(`^!Connected to storage`);
 
-            this.presenceController = new PresenceController({}, service);
+            const presenceTemplate = service.getThreadTemplates().presence;
+
+            this.presenceController = new PresenceController(service, presenceTemplate);
 
             this.presenceController.activityDetected();
 
-            this.channelListController = new ChannelListController({}, service);
+            const channelListTemplate = service.getThreadTemplates().channels;
+
+            const messageTemplate = service.getThreadTemplates().channel;
+
+            this.channelListController = new ChannelListController(service, channelListTemplate,
+                messageTemplate);
         });
 
         service.onPeerConnect( (p2pClient) => {
@@ -305,6 +314,8 @@ export class TermChat {
     protected async sendChat(message: string) {
         assert(this.channelListController);
 
+        this.presenceController?.activityDetected();
+
         const controller = this.channelListController.getActiveController();
 
         if (!controller) {
@@ -410,7 +421,9 @@ export class TermChat {
 
                 this.channelListController.setChannelActive(channelId1);
 
-                controller.onChange( (event) => event.added.length > 0 ? this.drawLastItem(controller) : null );
+                controller.onChange( (added: CRDTViewItem[]) =>
+                    this.drawLastItems(controller, added) );
+
             } else {
                 if (isNaN(index)) {
                     this.chat.appendLog(`^!Unable to open existing channel without the index. Try: /open 123`);
@@ -432,12 +445,27 @@ export class TermChat {
         });
     }
 
-    protected drawLastItem(controller: MessageController) {
-        const item = controller.getLastItem() as CRDTViewItem;
-        if (item) {
-            const message = item.data as Message;
-            this.chat.appendLog(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
+    protected drawLastItems(controller: MessageController, added: CRDTViewItem[]) {
+        // Render all messages which are appended to the model.
+        // Note that messages could be inserted at different locations into the model
+        // depending on when they are synced and these "old" messages will not be rendered
+        // here. To render a complete window of the model user controller.getItems().
+        //
+        let lastItemIndex = -1;
+
+        if (this.lastRenderedItemId1) {
+            lastItemIndex = controller.findItem(this.lastRenderedItemId1)?.index ?? -1;
         }
+
+        added.forEach( (item: CRDTViewItem) => {
+            if (item.index > lastItemIndex) {
+                const message = item.data as Message;
+
+                this.chat.appendLog(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
+            }
+        });
+
+        this.lastRenderedItemId1 = controller.getLastItem()?.id1;
     }
 }
 
