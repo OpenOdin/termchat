@@ -29,6 +29,7 @@ import {
 
 import {
     PresenceController,
+    PresenceItem,
 } from "./PresenceController";
 
 let console = PocketConsole({module: "TermChat", format: "%c[%L%l]%C "});
@@ -38,9 +39,6 @@ export class TermChat {
     protected presenceController?: PresenceController;
 
     protected channelListController?: ChannelListController;
-
-    protected lastRenderedItemId1?: Buffer;
-
 
     constructor(protected service: Service) {
         service.onStorageConnect( () => {
@@ -347,8 +345,9 @@ export class TermChat {
 
             const all = [...activeList, ...inactiveList];
 
-            all.forEach( (publicKey: Buffer, index: number) => {
+            all.forEach( (presenceItem: PresenceItem, index: number) => {
                 const active = index < activeList.length;
+                const publicKey = presenceItem.publicKey;
 
                 const you = publicKey.equals(this.service.getPublicKey()) ? " (this is you)" : "";
 
@@ -383,7 +382,7 @@ export class TermChat {
 
             const all = [...activeList, ...inactiveList];
 
-            const publicKey = all[index];
+            const publicKey = all[index].publicKey;
 
             if (publicKey) {
                 this.chat.appendLog(`^!Creating private channel with ${publicKey.toString("hex")}`);
@@ -421,8 +420,9 @@ export class TermChat {
 
                 this.channelListController.setChannelActive(channelId1);
 
-                controller.onChange( (added: CRDTViewItem[]) =>
-                    this.drawLastItems(controller, added) );
+                controller.onChange( (added: CRDTViewItem[], updated: CRDTViewItem[],
+                    deletedId1s: Buffer[], appended: CRDTViewItem[]) =>
+                    this.drawLastItems( appended) );
 
             } else {
                 if (isNaN(index)) {
@@ -445,27 +445,11 @@ export class TermChat {
         });
     }
 
-    protected drawLastItems(controller: MessageController, added: CRDTViewItem[]) {
-        // Render all messages which are appended to the model.
-        // Note that messages could be inserted at different locations into the model
-        // depending on when they are synced and these "old" messages will not be rendered
-        // here. To render a complete window of the model user controller.getItems().
-        //
-        let lastItemIndex = -1;
-
-        if (this.lastRenderedItemId1) {
-            lastItemIndex = controller.findItem(this.lastRenderedItemId1)?.index ?? -1;
-        }
-
-        added.forEach( (item: CRDTViewItem) => {
-            if (item.index > lastItemIndex) {
-                const message = item.data as Message;
-
-                this.chat.appendLog(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
-            }
+    protected drawLastItems(appended: CRDTViewItem[]) {
+        appended.forEach( (item: CRDTViewItem) => {
+            const message = item.data as Message;
+            this.chat.appendLog(`${message.creationTimestamp} ${message.publicKey}: ${message.text}`);
         });
-
-        this.lastRenderedItemId1 = controller.getLastItem()?.id1;
     }
 }
 
