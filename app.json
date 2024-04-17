@@ -19,23 +19,29 @@
                                 "value": "app/chat/presence",
                                 "cmp": "eq"
                             }
-                        ]
+                        ],
+                        "limitField": {
+                            "name": "owner",
+                            "limit": 1
+                        }
                     }
                 ],
                 "depth": 1,
-                "orderByStorageTime": true,
+                "limit": 1000,
                 "descending": true
-            },
-            "crdt": {
-                "algo": 1,
-                "tail": -1
             },
             "post": {
                 "presence": {
                     "contentType": "app/chat/presence",
                     "isPublic": true,
-                    "#": "Set Active state if last presence was within 60 minutes",
-                    "#validSeconds": 3600,
+                    "validSeconds": 120,
+                    "parentId": "0000000000000000000000000000000000000000000000000000000000000001"
+                },
+                "existence": {
+                    "#": "A presence node lasting a full week to show that user exists, even if not present",
+                    "contentType": "app/chat/presence",
+                    "isPublic": true,
+                    "validSeconds": 604800,
                     "parentId": "0000000000000000000000000000000000000000000000000000000000000001"
                 }
             }
@@ -107,11 +113,12 @@
                         "limit": 3000
                     }
                 ],
+                "descending": true,
                 "depth": 2,
                 "preserveTransient": true
             },
             "crdt": {
-                "algo": 1,
+                "algo": 3,
                 "tail": 1000,
                 "conf": {
                     "annotations": {
